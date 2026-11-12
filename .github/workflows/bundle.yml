@@ -1,0 +1,46 @@
+name: Build bundle
+
+on:
+  # This is intentionally schedule-only: push workflows run from the pushed branch,
+  # but this file exists only on main and component changes land on other branches.
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bundle-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main and its submodules
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          submodules: true
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Test CLI
+        working-directory: cli
+        run: npm test
+
+      - name: Smoke test backend API
+        run: node scripts/smoke-test-backend.mjs
+
+      - name: Build and publish the generated bundle
+        run: node scripts/build-bundle.mjs --push

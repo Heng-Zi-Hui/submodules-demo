@@ -1,0 +1,113 @@
+name: Build and push image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      # `bundle` is the submodule gitlink; this tracks release pointer bumps.
+      - bundle
+      - .github/workflows/docker.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the release and nested submodules
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Audit production dependencies
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Test CLI
+        working-directory: cli
+        run: npm test
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Generate image tags
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ghcr.io/heng-zi-hui/submodules-demo
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Build image locally for verification
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ./bundle
+          load: true
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+
+      - name: Smoke test the container
+        env:
+          IMAGE_REF: ghcr.io/heng-zi-hui/submodules-demo:latest
+        run: |
+          set -eu
+          docker run --detach --name snip-smoke --publish 127.0.0.1:3000:3000 "$IMAGE_REF"
+          trap 'docker rm --force snip-smoke >/dev/null 2>&1 || true' EXIT
+          ready=0
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+          curl --fail --silent http://127.0.0.1:3000/ | grep -q '<app-root'
+          created=$(curl --fail --silent --request POST http://127.0.0.1:3000/api/links \
+            --header 'content-type: application/json' \
+            --data '{"url":"https://example.com/container-smoke"}')
+          code=$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).code)' "$created")
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            "http://127.0.0.1:3000/$code")
+          test "$status" = 302
+          curl --fail --silent http://127.0.0.1:3000/api/links \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{if(JSON.parse(s)[0].hits!==1)process.exit(1)})'
+
+      - name: Scan image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ghcr.io/heng-zi-hui/submodules-demo:latest
+          scan-type: image
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish verified image tags
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -eu
+          while IFS= read -r tag; do
+            [ -z "$tag" ] || docker push "$tag"
+          done <<EOF
+          $TAGS
+          EOF
