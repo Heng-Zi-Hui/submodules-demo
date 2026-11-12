@@ -27,7 +27,7 @@ Links are held in memory and are cleared when the backend restarts.
 Use `--recurse-submodules`; a plain clone leaves the component directories empty:
 
 ```sh
-git clone --recurse-submodules https://github.com/Heng-Zi-Hui/submodules-demo.git
+git clone --branch main --recurse-submodules https://github.com/Heng-Zi-Hui/submodules-demo.git
 cd submodules-demo
 ```
 
@@ -56,3 +56,7 @@ git add backend && git commit -m "Bump backend submodule" && git push
 ```
 
 Apply the same flow to `frontend` or `cli`. The generated release is assembled from those pinned tips by `node scripts/build-bundle.mjs`; pass `--push` to publish the bundle and its `main` pointer.
+
+## Release automation
+
+The `bundle` branch is generated output; do not hand-edit it. The hourly **Build bundle** workflow checks the CLI and backend API, rebuilds the frontend and bundle from the source branch tips, then pushes the generated bundle and updated `main` pointer. The **Build and push image** workflow runs when the `bundle` gitlink changes (or when that workflow is edited); it audits production dependencies, builds and smoke-tests the Docker image, scans it with Trivy, and only then publishes `latest` and a short-SHA tag to GHCR.
