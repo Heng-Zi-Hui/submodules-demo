@@ -42,5 +42,10 @@ jobs:
       - name: Smoke test backend API
         run: node scripts/smoke-test-backend.mjs
 
+      - name: Configure release commit identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Build and publish the generated bundle
         run: node scripts/build-bundle.mjs --push
