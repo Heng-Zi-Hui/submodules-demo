@@ -29,13 +29,29 @@ jobs:
         with:
           node-version: 24
 
-      - name: Audit production dependencies
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Install frontend dependencies
         working-directory: frontend
-        run: npm audit --omit=dev --audit-level=high
+        run: npm ci
+
+      - name: Test frontend
+        working-directory: frontend
+        run: npx ng test --watch=false --browsers=ChromeHeadless
 
       - name: Test CLI
         working-directory: cli
         run: npm test
+
+      - name: Smoke test backend API
+        run: node scripts/smoke-test-backend.mjs
+
+      - name: Audit production dependencies
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
