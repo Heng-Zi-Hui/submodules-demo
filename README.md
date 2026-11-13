@@ -7,7 +7,7 @@ Snip is a tiny URL shortener with one backend and two clients: a browser UI and 
 | Branch | Contents | Stack |
 | --- | --- | --- |
 | `backend` | `server.js`, `package.json` | Bun API server; in-memory storage |
-| `frontend` | Angular app | Angular 19 |
+| `frontend` | Angular app | Angular 22 |
 | `cli` | `cli.js`, wrappers | Dependency-free Node.js CLI |
 | `bundle` | Generated server, UI, CLI, and Docker files | Bun + static UI |
 | `main` | Submodule pointers, docs, and release automation | Git superproject |
